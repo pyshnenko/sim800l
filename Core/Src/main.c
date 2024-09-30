@@ -73,6 +73,11 @@ int modemStringLength1 = 0;
 bool modemEndMess = false;
 uint8_t oldModem[250];
 uint8_t oldModem2[250];
+uint8_t oldModem3[250];
+uint8_t smsNum[6];
+uint8_t smsText[] = "Hello";
+int step=0, rxNew = false;
+bool ready=false;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -80,10 +85,310 @@ uint8_t oldModem2[250];
 
 void s800LSend(uint8_t *text, int nums) {
 	HAL_UART_Transmit(&huart2, text, nums, 0xFFFF);
-	HAL_UART_Transmit(&huart2, "\r\n", 2, 0xFFFF);
+	HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 0xFFFF);
 	HAL_UART_Transmit(&huart1, text, nums, 0xFFFF);
-	HAL_UART_Transmit(&huart1, "\r\n", 2, 0xFFFF);
+	HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 0xFFFF);
 	return;
+}
+
+int s800lMessAdd(uint8_t* text) {
+	int i = 0;
+	for (i; i<250; i++) {
+		if (text[i]=='!') return i;
+	}
+}
+
+void txATcommand() {
+	//HAL_Delay(500);
+	switch (step) {
+		case 0: {
+			ready=false;
+			s800LSend((uint8_t*)"ATE0", 4);
+			break;
+		}
+		case 1: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+CREG?", 8);
+			break;
+		}
+		case 2: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+SAPBR=1,1", 12);
+			break;
+		}
+		case 3: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+HTTPINIT", 11);
+			break;
+		}
+		case 4: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+HTTPPARA=\"CID\",1",19);
+			break;
+		}
+		case 5: {
+			ready=false;
+			uint8_t end[] = "\"!";
+			uint8_t mess[] = "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/test?a=send%20from%20stm32mod&sms=";
+			uint8_t ext[250];
+			uint8_t ext2[250];
+			snprintf(ext, 250, "%s%s", mess, smsText);
+			snprintf(ext2, 250, "%s%s", ext, end);
+			s800LSend(ext2, s800lMessAdd(ext2));
+			break;
+		}
+		case 6: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+HTTPACTION=0",15);
+			break;
+		}
+		case 7: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+HTTPREAD",11);
+			break;
+		}
+		case 8: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+HTTPTERM",11);
+			break;
+		}
+		case 9: {
+			ready=false;
+			s800LSend((uint8_t*)"AT+SAPBR=0,1", 12);
+			break;
+		}
+		case 20: {
+			ready = false;
+			s800LSend((uint8_t*)"AT+CMGF=1", 9);
+			break;
+		}
+		case 21: {
+			ready=false;
+			uint8_t ext[15];
+			uint8_t at[] = "AT+CMGR=";
+			snprintf(ext, 15, "%s%s", at, smsNum);
+			s800LSend(ext, s800lMessAdd(ext));
+			break;
+		}
+		case 22: {
+			ready = false;
+			s800LSend((uint8_t*)"AT+CMGDA=\"DEL ALL\"", 18);
+			break;
+		}
+		case 23: {
+			ready = false;
+			s800LSend((uint8_t*)"AT+CMGS=\"+79999811066\"", 22);
+			break;
+		}
+		case 24: {
+			ready = false;
+			s800LSend((uint8_t*)"stm32 is working", 16);
+			break;
+		}
+		case 25: {
+			ready = false;
+			uint8_t ggg = 0x1A;
+			s800LSend(ggg, 16);
+			break;
+		}
+	}
+	return;
+}
+
+void rxATcommand(uint8_t* text) {
+	switch (step) {
+		case 0: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else if (strstr((char*)text, (char*)"CMTI")) {
+				step=20;
+				ready=true;
+			}
+			else {
+				step=0;
+				ready=true;
+			}
+			break;
+		}
+		case 1: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+				break;
+			}
+			else {
+				step=9;
+				ready=true;
+			}
+			if (text[0]!='\r'){
+				if (strstr((char*)text, (char*)"0,1")) {
+					step=2;
+					ready=true;
+				}
+				else ready=true;
+			}
+			break;
+		}
+		case 2: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else {
+				step=8;
+				ready=true;
+			}
+			break;
+		}
+		case 3: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else {
+				step=8;
+				ready=true;
+			}
+			break;
+		}
+		case 4: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else {
+				step=8;
+				ready=true;
+			}
+			break;
+		}
+		case 5: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else {
+				step=8;
+				ready=true;
+			}
+			break;
+		}
+		case 6: {
+			if (strstr((char*)text, (char*)"200")) {
+				step++;
+				ready=true;
+			}
+			else if (strstr((char*)text, (char*)"0,60")) {
+				step=8;
+				ready=true;
+			}
+			break;
+		}
+		case 7: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else {
+				step=8;
+				ready=true;
+			}
+			break;
+		}
+		case 8: {
+			step=9;
+			ready=true;
+			break;
+		}
+		case 9: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step=10;
+				ready=true;
+			}
+			else {
+				step=0;
+				ready=true;
+			}
+			break;
+		}
+		case 10: {
+			if (strstr((char*)text, (char*)"CMTI")) {
+				bool start = false;
+				int j = 0;
+				for (int i = 0; i<250; i++) {
+					if (start) {
+						if ((text[i]=='\r')||(text[i]=='\n')) {
+							smsNum[j]='!';  //стоп-символ
+							break;
+						}
+						else {
+							smsNum[j]=text[i];
+							j++;
+						}
+					}
+					else {
+						if (text[i]==',') start = true;
+					}
+				}
+				step=20;
+				ready=true;
+			}
+			else {
+				step=10;
+				ready=true;
+			}
+			break;
+		}
+		case 20: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step++;
+				ready=true;
+			}
+			else {
+				step=10;
+				ready=true;
+			}
+			break;
+		}
+		case 21: {
+			memset(smsText, 0, sizeof(smsText));
+			for (int i = 0; i<250; i++) {
+				if ((oldModem3[i]=='\r')||(oldModem3[i]=='\n')) break;
+				else smsText[i] = oldModem3[i];
+			}
+			step++;
+			ready=true;
+			break;
+		}
+		case 22: {
+			step++;
+			ready=true;
+			break;
+		}
+		case 23: {
+			step++;
+			ready=true;
+			break;
+		}
+		case 24: {
+			step++;
+			ready=true;
+			break;
+		}
+		case 25: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step=0;
+				ready=true;
+			}
+			else {
+				step=10;
+				ready=true;
+			}
+			break;
+		}
+	}
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -97,9 +402,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			modemString2[modemStringLength2] = str[0];
 			modemStringLength2++;
 			HAL_UART_Transmit_DMA(&huart1, modemString2, modemStringLength2);
-			strncpy(oldModem2, oldModem, 250);
-			strncpy(oldModem, modemString2,modemStringLength1);
+			for (int i = modemStringLength2; i<250; i++)modemString2[i]=(uint8_t)0x00;
+			//strncpy((uint8_t*)oldModem3, (uint8_t*)oldModem2, 250);
+			for (int i = 0; i<250; i++) oldModem3[i] = oldModem2[i];
+			//strncpy((uint8_t*)oldModem2, (uint8_t*)oldModem, 250);
+			for (int i = 0; i<250; i++) oldModem2[i] = oldModem[i];
+			//strncpy((uint8_t*)oldModem, (uint8_t*)modemString2,250);
+			for (int i = 0; i<250; i++) oldModem[i] = modemString2[i];
+			/*for (int j = 0; j<250; j++)
+				if ((modemString2[j]=='\n')||(modemString2[j]=='\r'))
+					modemString2[j]=(uint8_t)0;*/
 			modemStringLength2 = 0;
+			rxNew=true;
 		}
 		HAL_UART_Receive_IT(&huart2,str,1);
 	}
@@ -170,7 +484,7 @@ int main(void)
   HAL_UART_Transmit(&huart1,(uint8_t*)"start\r\n",7,0xFFFF);
   HAL_UART_Transmit(&huart2,(uint8_t*)"AT+CSQ\r\n",8,0xFFFF);
 
-  HAL_Delay(500);
+  /*HAL_Delay(500);
   s800LSend((uint8_t*)"AT+SAPBR=1,1", 12);
   HAL_Delay(1000);
   s800LSend((uint8_t*)"AT+HTTPINIT", 11);
@@ -185,11 +499,14 @@ int main(void)
   HAL_Delay(1000);
   s800LSend((uint8_t*)"AT+HTTPTERM",11);
   HAL_Delay(1000);
-  s800LSend((uint8_t*)"AT+SAPBR=0,1",12);
-
-
-
+  s800LSend((uint8_t*)"AT+SAPBR=0,1",12);*/
   HAL_UART_Receive_IT(&huart2,str,1);
+
+  HAL_Delay(2000);
+  ready=true;
+
+
+
   HAL_UART_Receive_IT(&huart1,str2,1);
 
   //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -202,30 +519,42 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  if (ready) txATcommand();
 	  if (strstr(modemString2, "\r\n")) {
-		int i = 0, j=0, k=0;
-		for (i; i<250; i++) if (modemString2[i]=='\n') break;
-		for (j; j<250; j++) if (oldModem[j]=='\n') break;
-		for (k; k<250; k++) if (oldModem2[k]=='\n') break;
+		/*int i = 0, j=0, k=0;
+		for (i; i<250; i++) if (oldModem[i]=='\n') break;
+		for (j; j<250; j++) if (oldModem2[j]=='\n') break;
+		for (k; k<250; k++) if (oldModem3[k]=='\n') break;
 		uint8_t subBuf[i], subBuf2[j], subBuf3[k];
-		strncpy(subBuf, modemString2, i-1);
-		strncpy(subBuf2, oldModem, j-1);
-		strncpy(subBuf3, oldModem2, k-1);
+		strncpy(subBuf, oldModem, i-1);
+		strncpy(subBuf2, oldModem2, j-1);
+		strncpy(subBuf3, oldModem3, k-1);*/
 		SSD1306_Init();
 		SSD1306_GotoXY(0, 10);
-		SSD1306_Puts(subBuf, &Font_7x10, SSD1306_COLOR_WHITE);
+		uint8_t* ssold3[50];
+		int i = 0;
+		for (i = 0; i<50; i++) if (oldModem3=='\n') break;
+		strncpy(ssold3, oldModem3, i-2);
+		SSD1306_Puts(ssold3, &Font_7x10, SSD1306_COLOR_WHITE);
 		SSD1306_GotoXY(0, 25);
-		SSD1306_Puts(subBuf2, &Font_7x10, SSD1306_COLOR_WHITE);
+		SSD1306_Puts(oldModem2, &Font_7x10, SSD1306_COLOR_WHITE);
 		SSD1306_GotoXY(0, 40);
-		SSD1306_Puts(subBuf3, &Font_7x10, SSD1306_COLOR_WHITE);
+		SSD1306_Puts(oldModem, &Font_7x10, SSD1306_COLOR_WHITE);
 		SSD1306_UpdateScreen();
+		if (rxNew) {
+			if ((step==1))
+				rxATcommand(oldModem3);
+			else rxATcommand(oldModem);
+			rxNew = false;
+		}
 	  }
 	  /*if (strstr(modemString, "\n")) {
 		  HAL_UART_Transmit(&huart1, modemString, modemStringLength, 0xFFFF);
 		  modemStringLength = 0;
 		  memset(modemString,0,100);
 	  }*/
-	 HAL_Delay(1000);
+	 if (step>=10) HAL_Delay(1000);
+	 else HAL_Delay(250);
 
 	  //HAL_UART_Transmit(&huart1,modemString,10,0xFFFF);
 	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
