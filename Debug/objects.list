@@ -1,3 +1,5 @@
+"./Core/Src/cJSON.o"
+"./Core/Src/cJSON_Utils.o"
 "./Core/Src/fonts.o"
 "./Core/Src/main.o"
 "./Core/Src/ssd1306.o"
