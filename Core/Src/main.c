@@ -21,14 +21,15 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "cJSON.h"
-#include "ssd1306.h"
+//#include "cJSON.h"
+//#include "ssd1306.h"
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 uint8_t str[3]={"0"};
 uint8_t str2[3]={"0"};
 int timeRepeat = 0;
+int stopStep = 0;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,8 +48,6 @@ int timeRepeat = 0;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
-
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -64,7 +63,6 @@ DMA_HandleTypeDef hdma_usart2_rx;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
-static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
@@ -76,13 +74,22 @@ bool modemEndMess = false;
 uint8_t oldModem[250];
 uint8_t oldModem2[250];
 uint8_t oldModem3[250];
+uint8_t oldModem4[250];
 uint8_t smsNum[6];
 uint8_t unreedSms[15] = {0};
 uint8_t smsText[] = "Hello";
 uint8_t csqlvl[]="99";
+uint8_t tnumber1[] = "77777777777";
+uint8_t tnumber2[] = "77777777777";
+uint8_t tnumber3[] = "77777777777";
+uint16_t *idBase0 = (uint16_t*)(UID_BASE);
+uint16_t *idBase1 = (uint16_t*)(UID_BASE + 0x02);
+uint32_t *idBase2 = (uint32_t*)(UID_BASE + 0x04);
+uint32_t *idBase3 = (uint32_t*)(UID_BASE + 0x08);
+uint8_t unicID[64] = {0,};
 int step=0, rxNew = false;
 bool ready=false;
-bool comOpen = false, comClose = false, comStart = false, answ = false;
+bool answ = false, checkPhones = true, echoMode = true;
 uint8_t bat[8];
 /* USER CODE END PFP */
 
@@ -92,8 +99,10 @@ uint8_t bat[8];
 void s800LSend(uint8_t *text, int nums) {
 	HAL_UART_Transmit(&huart2, text, nums, 0xFFFF);
 	HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 0xFFFF);
-	HAL_UART_Transmit(&huart1, text, nums, 0xFFFF);
-	HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 0xFFFF);
+	if (echoMode) {
+		HAL_UART_Transmit(&huart1, text, nums, 0xFFFF);
+		HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 0xFFFF);
+	}
 	return;
 }
 
@@ -102,6 +111,38 @@ int s800lMessAdd(uint8_t* text) {
 	for (i; i<250; i++) {
 		if (text[i]=='!') return i;
 	}
+}
+
+void buttStart() {
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 0);
+	HAL_Delay(3000);
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 1);
+}
+
+void buttOpen() {
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+	for (int i = 0; i<5; i++) {
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+		HAL_Delay(100);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+		HAL_Delay(100);
+	}
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 1);
+}
+
+void buttClose() {
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, 0);
+	for (int i = 0; i<3; i++) {
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
+		HAL_Delay(250);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+		HAL_Delay(250);
+	}
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, 1);
 }
 
 void txATcommand() {
@@ -146,11 +187,12 @@ void txATcommand() {
 		case 7: {
 			ready=false;
 			bat[7]=0;
-			//uint8_t end[] = "\"";
-			//uint8_t mess[] = "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=19&bat=99&mes=";//"AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/test?a=send%20from%20stm32mod&sms=";
 			uint8_t ext[250];
-			if (answ) snprintf(ext, 250, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=%s&bat=%s&mes=.%s.\"", csqlvl, bat, smsText);
-			else snprintf(ext, 250, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=%s&bat=%s\"", csqlvl, bat);
+			if (answ)
+				sprintf(ext, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=%s&bat=%s&mes=%s&id=%s\"", csqlvl, bat, smsText, unicID);
+			else if (!checkPhones)
+				sprintf(ext, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=%s&bat=%s&id=%s\"", csqlvl, bat, unicID);
+			else sprintf(ext, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/phn?id=%s\"", unicID);
 			s800LSend(ext, strlen(ext));
 			break;
 		}
@@ -202,8 +244,8 @@ void txATcommand() {
 			ready = false;
 			step=24;
 			uint8_t ggg[20];
-			sprintf(ggg, "%s%c", (uint8_t*)"stm32 is working", (uint8_t)0x1A);
-			s800LSend(ggg, 17);
+			sprintf(ggg, "%s%c", smsText, (uint8_t)0x1A);
+			s800LSend(ggg, strlen(ggg));
 			break;
 		}
 	}
@@ -252,146 +294,102 @@ void rxATcommand(uint8_t* text) {
 			break;
 		}
 		case 3: {
-			if (strstr((char*)oldModem3, (char*)"0,1")) {
-				step++;
-				ready=true;
-				break;
-			}
-			else {
-				ready=false;
-			}
+			if (strstr((char*)oldModem3, (char*)"0,1")) step++;
+			ready=true;
 			break;
 		}
 		case 4: {
-			if (strstr((char*)text, (char*)"OK")) {
-				step++;
-			}
-			else if (strstr((char*)text, (char*)"ERROR")){
-				step=10;
-			}
+			if (strstr((char*)text, (char*)"OK")) step++;
+			else if (strstr((char*)text, (char*)"ERROR")) step=10;
 			ready=true;
 			break;
 		}
 		case 5: {
-			if (strstr((char*)text, (char*)"OK")) {
-				step++;
-			}
-			else if (strstr((char*)text, (char*)"ERROR")){
-				step=10;
-			}
+			if (strstr((char*)text, (char*)"OK")) step++;
+			else if (strstr((char*)text, (char*)"ERROR")) step=10;
 			ready=true;
 			break;
 		}
 		case 6: {
-			if (strstr((char*)text, (char*)"OK")) {
-				step++;
-				ready=true;
-			}
-			else {
-				step=10;
-				ready=true;
-			}
+			if (strstr((char*)text, (char*)"OK")) step++;
+			else step=10;
+			ready=true;
 			break;
 		}
 		case 7: {
-			if (strstr((char*)text, (char*)"OK")) {
-				step++;
-				ready=true;
-			}
-			else {
-				step=10;
-				ready=true;
-			}
+			if (strstr((char*)text, (char*)"OK")) step++;
+			else step=10;
+			ready=true;
 			break;
 		}
 		case 8: {
-			if (strstr((char*)text, (char*)"200")) {
-				step++;
-				ready=true;
-			}
-			else if ((strstr((char*)text, (char*)"0,60"))||(strstr((char*)text, (char*)"0,40"))) {
-				step=10;
-				ready=true;
-			}
+			ready=true;
+			if (strstr((char*)text, (char*)"200")) step++;
+			else if ((strstr((char*)text, (char*)"0,60"))||(strstr((char*)text, (char*)"0,40"))||(strstr((char*)text, (char*)"0,50"))) step=10;
+			else ready=false;
 			break;
 		}
 		case 9: {
 			if (!answ) {
 				if (strstr((char*)text, (char*)"OK")) {
-					if (strstr((char*)oldModem2, "res")) {
-						comStart = false;
-						comOpen = false;
-						comClose = false;
-						memset(smsText, 0, strlen(smsText));
+					if (checkPhones) {
+						if (strstr((char*)oldModem2, (char*)"t1"))
+							for (int i = 0; i<11; i++) tnumber1[i] = oldModem2[i+7];
+						if (strstr((char*)oldModem2, (char*)"t2"))
+							for (int i = 0; i<11; i++) tnumber2[i] = oldModem2[i+26];
+						if (strstr((char*)oldModem2, (char*)"t3"))
+							for (int i = 0; i<11; i++) tnumber3[i] = oldModem2[i+45];
+						checkPhones = false;
+					}
+					else if (strstr((char*)oldModem2, "phones")) {
+						checkPhones = true;
+						answ = false;
+					}
+					else if (strstr((char*)oldModem2, "res")) {
 						if (oldModem2[6]=='t') {
-							comStart=true;
+							memset(smsText, 0, strlen(smsText));
+							buttStart();
 							strcpy(smsText, (uint8_t*)"Start");
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
-							HAL_Delay(100);
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
-							HAL_Delay(100);
 						}
 						else if (oldModem2[17]=='t') {
-							comOpen=true;
+							memset(smsText, 0, strlen(smsText));
+							buttOpen();
 							strcpy(smsText, (uint8_t*)"Open");
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);
 						}
 						else if (oldModem2[28]=='t') {
-							comClose=true;
+							memset(smsText, 0, strlen(smsText));
+							buttClose();
 							strcpy(smsText, (uint8_t*)"Closed");
-							HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
 						}
+						answ = true;
 					}
 					step=7;
-					answ = true;
-					ready=true;
 				}
 				else {
 					step=10;
 					answ = false;
-					ready=true;
 				}
+				ready=true;
 			}
 			else {
-				if (strstr((char*)text, (char*)"OK")) {
-					step++;
-					answ = false;
-					ready=true;
-				}
-				else {
-					step=10;
-					answ = false;
-					ready=true;
-				}
+				if (strstr((char*)text, (char*)"OK")) step++;
+				else step=10;
+				answ = false;
+				ready=true;
+				memset(smsText, 0, strlen(smsText));
 			}
 			break;
 		}
 		case 10: {
-			step=11;
+			if (strstr((char*)text, (char*)"OK")) step=11;
+			else if (strstr((char*)text, (char*)"ERROR")) step=11;
 			ready=true;
 			break;
 		}
 		case 11: {
-			if (strstr((char*)text, (char*)"OK")) {
-				step=12;
-				ready=true;
-			}
-			else {
-				step=0;
-				ready=true;
-			}
+			if (strstr((char*)text, (char*)"OK")) step=12;
+			else step=0;
+			ready=true;
 			break;
 		}
 		case 12: {
@@ -409,34 +407,43 @@ void rxATcommand(uint8_t* text) {
 							j++;
 						}
 					}
-					else {
-						if (text[i]==',') start = true;
-					}
+					else if (text[i]==',') start = true;
 				}
 				step=20;
-				ready=true;
 			}
-			else {
-				step=12;
-				ready=true;
-			}
+			else step=12;
+			ready=true;
 			break;
 		}
 		case 20: {
-			if (strstr((char*)text, (char*)"OK")) {
-				step++;
-				ready=true;
-			}
-			else {
-				step=12;
-				ready=true;
-			}
+			if (strstr((char*)text, (char*)"OK")) step++;
+			else step=12;
+			ready=true;
 			break;
 		}
 		case 21: {
 			memset(smsText, 0, sizeof(smsText));
 			strcpy(smsText, oldModem3);
-			step++;
+			bool numberCorrect = false;
+			if (strstr((char*)oldModem4, (char*)tnumber1)) numberCorrect=true;
+			else if (strstr((char*)oldModem4, (char*)tnumber2)) numberCorrect=true;
+			else if (strstr((char*)oldModem4, (char*)tnumber3)) numberCorrect=true;
+			if (numberCorrect) {
+				if (strstr(oldModem3, "tart")) {
+					buttStart();
+				}
+				else if (strstr(oldModem3, "pen")) {
+					buttOpen();
+				}
+				else if (strstr(oldModem3, "lose")) {
+					buttClose();
+				}
+				step++;
+			}
+			else {
+				step = 0;
+				strncat(smsText, (uint8_t*)"-stranger", 9);
+			}
 			ready=true;
 			break;
 		}
@@ -452,17 +459,17 @@ void rxATcommand(uint8_t* text) {
 		}
 		case 24: {
 			if (strstr((char*)text, (char*)"OK")) {
-				step=0;
-				ready=true;
+				if (stopStep==12) step=0;
+				else step=stopStep;
 			}
 			else if (strstr((char*)text, (char*)">")) {
-				step=0;
-				ready=true;
+				if (stopStep==12) step=0;
+				else step=stopStep;
 			}
 			else {
 				step=12;
-				ready=true;
 			}
+			ready=true;
 			break;
 		}
 	}
@@ -477,8 +484,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		else {
 			modemString2[modemStringLength2] = str[0];
 			modemStringLength2++;
-			HAL_UART_Transmit_DMA(&huart1, modemString2, modemStringLength2);
+			if (echoMode) HAL_UART_Transmit_DMA(&huart1, modemString2, modemStringLength2);
 			for (int i = modemStringLength2; i<250; i++)modemString2[i]=(uint8_t)0x00;
+			for (int i = 0; i<250; i++) oldModem4[i] = oldModem3[i];
 			for (int i = 0; i<250; i++) oldModem3[i] = oldModem2[i];
 			for (int i = 0; i<250; i++) oldModem2[i] = oldModem[i];
 			for (int i = 0; i<250; i++) oldModem[i] = modemString2[i];
@@ -497,9 +505,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		else {
 			modemString1[modemStringLength1] = str2[0];
 			modemStringLength1++;
-			HAL_UART_Transmit_DMA(&huart2, modemString1, modemStringLength1);
+			if (strstr((char*)modemString1, (char*)"echoON")) {
+				echoMode = true;
+				HAL_UART_Transmit_DMA(&huart1, (uint8_t*)"echo mode ON\r\n", 14);
+			}
+			else if (strstr((char*)modemString1, (char*)"echoOFF")) {
+				echoMode = false;
+				HAL_UART_Transmit_DMA(&huart1, (uint8_t*)"echo mode OFF\r\n", 14);
+			}
+			else if (strstr((char*)modemString1, (char*)"gprs")) {
+				timeRepeat = 0;
+				HAL_UART_Transmit_DMA(&huart1, (uint8_t*)"update start\r\n", 14);
+			}
+			else if (echoMode) HAL_UART_Transmit_DMA(&huart2, modemString1, modemStringLength1);
 			modemStringLength1 = 0;
-
 		}
 		HAL_UART_Receive_IT(&huart1,str2,1);
 	}
@@ -523,6 +542,7 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
+  sprintf(unicID, "%x-%x-%lx-%lx", *idBase0, *idBase1, *idBase2, *idBase3);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -535,18 +555,24 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_I2C1_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  SSD1306_Init();
+  /*SSD1306_Init();
   SSD1306_GotoXY(0, 44); //Устанавливаем курсор в позицию 0;44. Сначала по горизонтали, потом вертикали.
   SSD1306_Puts("Hello, habrahabr!!", &Font_7x10, SSD1306_COLOR_WHITE); //пишем надпись в выставленной позиции шрифтом "Font_7x10" белым цветом.
   SSD1306_DrawCircle(10, 33, 7, SSD1306_COLOR_WHITE);
-  SSD1306_UpdateScreen();
+  SSD1306_UpdateScreen();*/
+  for (int i = 0; i<10; i++) {
+	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+	  HAL_Delay(250);
+  }
 
   HAL_UART_Transmit(&huart1,(uint8_t*)"start\r\n",7,0xFFFF);
-  HAL_UART_Transmit(&huart2,(uint8_t*)"AT+CSQ\r\n",8,0xFFFF);
+  HAL_UART_Transmit(&huart1,(uint8_t*)"echoON - for echo mode\r\n",24,0xFFFF);
+  HAL_UART_Transmit(&huart1,(uint8_t*)"echoOFF - for normal mode\r\n",27,0xFFFF);
+  HAL_UART_Transmit(&huart1,(uint8_t*)"gprs - gprs update\r\n",20,0xFFFF);
+  HAL_UART_Transmit(&huart2,(uint8_t*)"AT\r\n",8,0xFFFF);
 
   HAL_UART_Receive_IT(&huart2,str,1);
 
@@ -554,7 +580,7 @@ int main(void)
   ready=true;
 
   timeRepeat = HAL_GetTick();
-  int repeetTime = 0;
+  int lightTime = 0;
   HAL_UART_Receive_IT(&huart1,str2,1);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
   /* USER CODE END 2 */
@@ -568,15 +594,21 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  if (ready) {
 		  txATcommand();
-		  if ((HAL_GetTick()-timeRepeat)>(2*60*1000)) {
+		  if (((HAL_GetTick()-timeRepeat)>(2*60*1000))&&(step==12)) {
 			  step = 0;
 			  timeRepeat = HAL_GetTick();
 			  txATcommand();
 		  }
-		  else repeetTime++;
+		  else if (step!=12) timeRepeat = HAL_GetTick();
+		  if ((HAL_GetTick()-lightTime)>(30*1000)) {
+			  lightTime = HAL_GetTick();
+			  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+			  HAL_Delay(100);
+			  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+		  }
 	  }
 	  if (strstr(modemString2, "\r\n")) {
-		if (!strstr(modemString2, "OK")) {
+		/*if (!strstr(modemString2, "OK")) {
 			SSD1306_Fill(SSD1306_COLOR_BLACK);
 			SSD1306_GotoXY(0, 10);
 			SSD1306_Puts(oldModem3, &Font_7x10, SSD1306_COLOR_WHITE);
@@ -585,10 +617,12 @@ int main(void)
 			SSD1306_GotoXY(0, 40);
 			SSD1306_Puts(oldModem, &Font_7x10, SSD1306_COLOR_WHITE);
 			SSD1306_UpdateScreen();
-		}
+		}*/
 		if (rxNew) {
 			if (strstr(oldModem, "+CMTI")) {
-				sprintf(unreedSms, "%s", oldModem);
+				stopStep = step;
+				step = 12;
+				rxATcommand(oldModem);
 			}
 			else if ((step==1))
 				rxATcommand(oldModem3);
@@ -596,11 +630,7 @@ int main(void)
 			rxNew = false;
 		}
 	  }
-	 if (step>=12) HAL_Delay(1000);
-	 if ((unreedSms[0]!=0)&&(step==12)){
-		 rxATcommand(unreedSms);
-		 memset(unreedSms, 0, 15);
-	 }
+	 if (step==12) HAL_Delay(1000);
 	 else HAL_Delay(250);
 
 	  //HAL_UART_Transmit(&huart1,modemString,10,0xFFFF);
@@ -646,40 +676,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-}
-
-/**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C1_Init(void)
-{
-
-  /* USER CODE BEGIN I2C1_Init 0 */
-
-  /* USER CODE END I2C1_Init 0 */
-
-  /* USER CODE BEGIN I2C1_Init 1 */
-
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
-  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
-
 }
 
 /**
@@ -793,12 +789,22 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12|GPIO_PIN_13, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB12 PB13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
