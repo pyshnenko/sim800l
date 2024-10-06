@@ -82,6 +82,7 @@ uint8_t csqlvl[]="99";
 uint8_t tnumber1[] = "77777777777";
 uint8_t tnumber2[] = "77777777777";
 uint8_t tnumber3[] = "77777777777";
+uint8_t backNumber[] = "77777777777";
 uint16_t *idBase0 = (uint16_t*)(UID_BASE);
 uint16_t *idBase1 = (uint16_t*)(UID_BASE + 0x02);
 uint32_t *idBase2 = (uint32_t*)(UID_BASE + 0x04);
@@ -237,7 +238,9 @@ void txATcommand() {
 		case 23: {
 			step=24;
 			ready = true;
-			s800LSend((uint8_t*)"AT+CMGS=\"+79999811066\"", 22);
+			uint8_t ext[23] = {0};
+			sprintf(ext, "AT+CMGS=\"+%s\"", backNumber);
+			s800LSend(ext, 22);
 			break;
 		}
 		case 24: {
@@ -246,6 +249,11 @@ void txATcommand() {
 			uint8_t ggg[20];
 			sprintf(ggg, "%s%c", smsText, (uint8_t)0x1A);
 			s800LSend(ggg, strlen(ggg));
+			break;
+		}
+		case 99: {
+			ready = true;
+			s800LSend((uint8_t*)"AT+CFUN=1,1", 22);
 			break;
 		}
 	}
@@ -325,7 +333,9 @@ void rxATcommand(uint8_t* text) {
 		case 8: {
 			ready=true;
 			if (strstr((char*)text, (char*)"200")) step++;
-			else if ((strstr((char*)text, (char*)"0,60"))||(strstr((char*)text, (char*)"0,40"))||(strstr((char*)text, (char*)"0,50"))) step=10;
+			else if (strstr((char*)text, (char*)"0,60")) step=99;
+			else if ((strstr((char*)text, (char*)"0,40"))||
+					(strstr((char*)text, (char*)"0,50"))) step=10;
 			else ready=false;
 			break;
 		}
@@ -425,9 +435,18 @@ void rxATcommand(uint8_t* text) {
 			memset(smsText, 0, sizeof(smsText));
 			strcpy(smsText, oldModem3);
 			bool numberCorrect = false;
-			if (strstr((char*)oldModem4, (char*)tnumber1)) numberCorrect=true;
-			else if (strstr((char*)oldModem4, (char*)tnumber2)) numberCorrect=true;
-			else if (strstr((char*)oldModem4, (char*)tnumber3)) numberCorrect=true;
+			if (strstr((char*)oldModem4, (char*)tnumber1)) {
+				numberCorrect=true;
+				sprintf(backNumber, "%s", tnumber1);
+			}
+			else if (strstr((char*)oldModem4, (char*)tnumber2)) {
+				numberCorrect=true;
+				sprintf(backNumber, "%s", tnumber2);
+			}
+			else if (strstr((char*)oldModem4, (char*)tnumber3)) {
+				numberCorrect=true;
+				sprintf(backNumber, "%s", tnumber3);
+			}
 			if (numberCorrect) {
 				if (strstr(oldModem3, "tart")) {
 					buttStart();
@@ -470,6 +489,14 @@ void rxATcommand(uint8_t* text) {
 				step=12;
 			}
 			ready=true;
+			break;
+		}
+		case 99: {
+			if (strstr((char*)text, (char*)"OK")) {
+				step=0;
+				ready=true;
+			}
+			else ready = true;
 			break;
 		}
 	}
@@ -592,9 +619,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if (ready) {
+	  if (ready||
+			  ((HAL_GetTick()-timeRepeat)>(5*60*1000))||
+			  (((HAL_GetTick()-timeRepeat)>(10*1000))&&(step==0))) {
 		  txATcommand();
-		  if (((HAL_GetTick()-timeRepeat)>(2*60*1000))&&(step==12)) {
+		  if ((((HAL_GetTick()-timeRepeat)>(2*60*1000))&&(step==12))||
+				  ((HAL_GetTick()-timeRepeat)>(5*60*1000))||
+				  (((HAL_GetTick()-timeRepeat)>(10*1000))&&(step==0))){
 			  step = 0;
 			  timeRepeat = HAL_GetTick();
 			  txATcommand();

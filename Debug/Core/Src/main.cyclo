@@ -1,0 +1,15 @@
+../Core/Src/main.c:100:6:s800LSend	2
+../Core/Src/main.c:110:5:s800lMessAdd	3
+../Core/Src/main.c:117:6:buttStart	1
+../Core/Src/main.c:125:6:buttOpen	2
+../Core/Src/main.c:137:6:buttClose	2
+../Core/Src/main.c:149:6:txATcommand	21
+../Core/Src/main.c:263:6:rxATcommand	73
+../Core/Src/main.c:505:6:HAL_UART_RxCpltCallback	14
+../Core/Src/main.c:559:5:main	18
+../Core/Src/main.c:677:6:SystemClock_Config	3
+../Core/Src/main.c:717:13:MX_USART1_UART_Init	2
+../Core/Src/main.c:750:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:781:13:MX_DMA_Init	1
+../Core/Src/main.c:808:13:MX_GPIO_Init	1
+../Core/Src/main.c:852:6:Error_Handler	1
