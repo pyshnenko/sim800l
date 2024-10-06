@@ -90,7 +90,7 @@ uint32_t *idBase3 = (uint32_t*)(UID_BASE + 0x08);
 uint8_t unicID[64] = {0,};
 int step=0, rxNew = false;
 bool ready=false;
-bool answ = false, checkPhones = true, echoMode = true;
+bool answ = false, checkPhones = true, echoMode = true, errTransmit = false;
 uint8_t bat[8];
 /* USER CODE END PFP */
 
@@ -308,13 +308,19 @@ void rxATcommand(uint8_t* text) {
 		}
 		case 4: {
 			if (strstr((char*)text, (char*)"OK")) step++;
-			else if (strstr((char*)text, (char*)"ERROR")) step=10;
+			else if (strstr((char*)text, (char*)"ERROR")) {
+				step=10;
+				errTransmit = true;
+			}
 			ready=true;
 			break;
 		}
 		case 5: {
 			if (strstr((char*)text, (char*)"OK")) step++;
-			else if (strstr((char*)text, (char*)"ERROR")) step=10;
+			else if (strstr((char*)text, (char*)"ERROR")) {
+				step=10;
+				errTransmit = true;
+			}
 			ready=true;
 			break;
 		}
@@ -335,7 +341,10 @@ void rxATcommand(uint8_t* text) {
 			if (strstr((char*)text, (char*)"200")) step++;
 			else if (strstr((char*)text, (char*)"0,60")) step=99;
 			else if ((strstr((char*)text, (char*)"0,40"))||
-					(strstr((char*)text, (char*)"0,50"))) step=10;
+					(strstr((char*)text, (char*)"0,50"))) {
+				step=10;
+				errTransmit = true;
+			}
 			else ready=false;
 			break;
 		}
@@ -378,12 +387,16 @@ void rxATcommand(uint8_t* text) {
 				else {
 					step=10;
 					answ = false;
+					errTransmit = true;
 				}
 				ready=true;
 			}
 			else {
 				if (strstr((char*)text, (char*)"OK")) step++;
-				else step=10;
+				else {
+					step=10;
+					errTransmit = true;
+				}
 				answ = false;
 				ready=true;
 				memset(smsText, 0, strlen(smsText));
@@ -397,8 +410,12 @@ void rxATcommand(uint8_t* text) {
 			break;
 		}
 		case 11: {
-			if (strstr((char*)text, (char*)"OK")) step=12;
+			if (strstr((char*)text, (char*)"OK")) {
+				step=12;
+				if (errTransmit) step = 0;
+			}
 			else step=0;
+			errTransmit = false;
 			ready=true;
 			break;
 		}
