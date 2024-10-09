@@ -28,7 +28,7 @@
 #include <string.h>
 uint8_t str[3]={"0"};
 uint8_t str2[3]={"0"};
-int timeRepeat = 0;
+uint32_t timeRepeat = 0;
 int stopStep = 0;
 /* USER CODE END Includes */
 
@@ -77,12 +77,12 @@ uint8_t oldModem3[250];
 uint8_t oldModem4[250];
 uint8_t smsNum[6];
 uint8_t unreedSms[15] = {0};
-uint8_t smsText[] = "Hello";
-uint8_t csqlvl[]="99";
-uint8_t tnumber1[] = "77777777777";
-uint8_t tnumber2[] = "77777777777";
-uint8_t tnumber3[] = "77777777777";
-uint8_t backNumber[] = "77777777777";
+uint8_t smsText[250] = "Hello";
+uint8_t csqlvl[5]="99";
+uint8_t tnumber1[15] = "77777777777";
+uint8_t tnumber2[15] = "77777777777";
+uint8_t tnumber3[15] = "77777777777";
+uint8_t backNumber[15] = "77777777777";
 uint16_t *idBase0 = (uint16_t*)(UID_BASE);
 uint16_t *idBase1 = (uint16_t*)(UID_BASE + 0x02);
 uint32_t *idBase2 = (uint32_t*)(UID_BASE + 0x04);
@@ -90,8 +90,12 @@ uint32_t *idBase3 = (uint32_t*)(UID_BASE + 0x08);
 uint8_t unicID[64] = {0,};
 int step=0, rxNew = false;
 bool ready=false;
-bool answ = false, checkPhones = true, echoMode = true, errTransmit = false;
+bool answ = false, checkPhones = true, echoMode = false, errTransmit = false;
 uint8_t bat[8];
+bool needStart = false, needOpen = false, needClose = false, delayAnsw = false;
+uint32_t timeOfStart = 0;
+uint32_t timeRepeatTotal = 10*60*1000;
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -152,6 +156,7 @@ void txATcommand() {
 		case 0: {
 			ready=false;
 			s800LSend((uint8_t*)"ATE0", 4);
+			HAL_UART_Transmit(&huart1, "start update\r\n", 14, 0xFFFF);
 			break;
 		}
 		case 1: {
@@ -189,11 +194,12 @@ void txATcommand() {
 			ready=false;
 			bat[7]=0;
 			uint8_t ext[250];
-			if (answ)
+			if ((answ)||(delayAnsw))
 				sprintf(ext, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=%s&bat=%s&mes=%s&id=%s\"", csqlvl, bat, smsText, unicID);
 			else if (!checkPhones)
 				sprintf(ext, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/gst?csq=%s&bat=%s&id=%s\"", csqlvl, bat, unicID);
 			else sprintf(ext, "AT+HTTPPARA=\"URL\",\"http://simple.spamigor.ru/api/phn?id=%s\"", unicID);
+			delayAnsw = false;
 			s800LSend(ext, strlen(ext));
 			break;
 		}
@@ -326,13 +332,19 @@ void rxATcommand(uint8_t* text) {
 		}
 		case 6: {
 			if (strstr((char*)text, (char*)"OK")) step++;
-			else step=10;
+			else {
+				step=10;
+				errTransmit = true;
+			}
 			ready=true;
 			break;
 		}
 		case 7: {
 			if (strstr((char*)text, (char*)"OK")) step++;
-			else step=10;
+			else {
+				step=10;
+				errTransmit = true;
+			}
 			ready=true;
 			break;
 		}
@@ -365,20 +377,62 @@ void rxATcommand(uint8_t* text) {
 						answ = false;
 					}
 					else if (strstr((char*)oldModem2, "res")) {
+						needStart = false;
+						needOpen = false;
+						needClose = false;
+						if (strstr((char*)oldModem2, ",\"delT\":")) {
+						    uint8_t *start;
+						    uint8_t *end;
+						    uint8_t str1 [8]=",\"res\"";
+						    uint8_t str2 [8]="\"delT\":";
+						    start = strstr (oldModem2,str2);
+						    end = strstr (oldModem2,str1);
+						    uint8_t delTime[10] = {0};
+							int j = 0;
+							for (int i = (start-oldModem2)+7; i<(end-oldModem2); i++) {
+								delTime[j]=oldModem2[i];
+								j++;
+							}
+							timeOfStart = atoi(delTime);
+						}
 						if (oldModem2[6]=='t') {
 							memset(smsText, 0, strlen(smsText));
-							buttStart();
-							strcpy(smsText, (uint8_t*)"Start");
+							if (timeOfStart==0) {
+								buttStart();
+								strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA");
+							}
+							else {
+								if (!needStart) strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BF%D1%83%D1%81%D1%82%D0%B8%D1%82%D1%8C%20%D0%BF%D0%BE%D0%B7%D0%B6%D0%B5");
+								needStart = true;
+								needOpen = false;
+								needClose = false;
+							}
 						}
 						else if (oldModem2[17]=='t') {
 							memset(smsText, 0, strlen(smsText));
-							buttOpen();
-							strcpy(smsText, (uint8_t*)"Open");
+							if (timeOfStart==0) {
+								buttOpen();
+								strcpy(smsText, (uint8_t*)"%D0%9E%D1%82%D0%BA%D1%80%D1%8B%D1%82%D1%8C");
+							}
+							else {
+								if (!needOpen) strcpy(smsText, (uint8_t*)"%D0%9E%D1%82%D0%BA%D1%80%D1%8B%D1%82%D1%8C%20%D0%BF%D0%BE%D0%B7%D0%B6%D0%B5");
+								needStart = false;
+								needOpen = true;
+								needClose = false;
+							}
 						}
 						else if (oldModem2[28]=='t') {
 							memset(smsText, 0, strlen(smsText));
-							buttClose();
-							strcpy(smsText, (uint8_t*)"Closed");
+							if (timeOfStart==0) {
+								buttClose();
+								strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BA%D1%80%D1%8B%D1%82%D1%8C");
+							}
+							else {
+								if (!needClose) strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BA%D1%80%D1%8B%D1%82%D1%8C%20%D0%BF%D0%BE%D0%B7%D0%B6%D0%B5");
+								needStart = false;
+								needOpen = false;
+								needClose = true;
+							}
 						}
 						answ = true;
 					}
@@ -561,6 +615,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				timeRepeat = 0;
 				HAL_UART_Transmit_DMA(&huart1, (uint8_t*)"update start\r\n", 14);
 			}
+			else if (strstr((char*)modemString1, (char*)"timeDelay")) {
+				timeRepeat = 0;
+				uint8_t buf[10] = {0};
+			    for (int i = 10; i<modemStringLength1-2; i++) buf[i-10] = modemString1[i];
+			    uint32_t a = atoi(buf);
+			    if (a<(2*60*1000)) a = 120000;
+			    timeRepeatTotal = a;
+				HAL_UART_Transmit_DMA(&huart1, (uint8_t*)"new delay set\r\n", 15);
+			}
 			else if (echoMode) HAL_UART_Transmit_DMA(&huart2, modemString1, modemStringLength1);
 			modemStringLength1 = 0;
 		}
@@ -616,6 +679,7 @@ int main(void)
   HAL_UART_Transmit(&huart1,(uint8_t*)"echoON - for echo mode\r\n",24,0xFFFF);
   HAL_UART_Transmit(&huart1,(uint8_t*)"echoOFF - for normal mode\r\n",27,0xFFFF);
   HAL_UART_Transmit(&huart1,(uint8_t*)"gprs - gprs update\r\n",20,0xFFFF);
+  HAL_UART_Transmit(&huart1,(uint8_t*)"timeDelay:XXXXXXX\r\n",19,0xFFFF);
   HAL_UART_Transmit(&huart2,(uint8_t*)"AT\r\n",8,0xFFFF);
 
   HAL_UART_Receive_IT(&huart2,str,1);
@@ -625,6 +689,8 @@ int main(void)
 
   timeRepeat = HAL_GetTick();
   int lightTime = 0;
+  uint32_t oldTick = 0;
+  uint32_t deltaTick = 0;
   HAL_UART_Receive_IT(&huart1,str2,1);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
   /* USER CODE END 2 */
@@ -636,15 +702,46 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  if (oldTick!=0) {
+		  uint32_t newTick = HAL_GetTick();
+		  deltaTick = newTick-oldTick;
+	  }
+	  oldTick = HAL_GetTick();
+	  if ((timeOfStart!=0)&&(deltaTick!=0)) {
+		  if (timeOfStart>deltaTick) timeOfStart = timeOfStart - deltaTick;
+		  else timeOfStart = 0;
+	  }
 	  if (ready||
-			  ((HAL_GetTick()-timeRepeat)>(5*60*1000))||
-			  (((HAL_GetTick()-timeRepeat)>(10*1000))&&(step==0))) {
+			  ((HAL_GetTick()-timeRepeat)>(timeRepeatTotal*2.5))||
+			  (((HAL_GetTick()-timeRepeat)>(10*1000))&&(step==0))||
+			  ((timeOfStart<(10*1000))&&(needStart||needOpen||needClose))) {
 		  txATcommand();
-		  if ((((HAL_GetTick()-timeRepeat)>(2*60*1000))&&(step==12))||
-				  ((HAL_GetTick()-timeRepeat)>(5*60*1000))||
+		  if ((((HAL_GetTick()-timeRepeat)>timeRepeatTotal)&&(step==12))||
+				  ((HAL_GetTick()-timeRepeat)>(timeRepeatTotal*2.5))||
 				  (((HAL_GetTick()-timeRepeat)>(10*1000))&&(step==0))){
 			  step = 0;
 			  timeRepeat = HAL_GetTick();
+			  txATcommand();
+		  }
+		  else if ((timeOfStart<(10*1000))&&(needStart||needOpen||needClose)) {
+			  if (needStart) {
+				  buttStart();
+				memset(smsText, 0, strlen(smsText));
+				strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA");//Запуск
+			  }
+			  else if (needOpen) {
+				  buttOpen();
+				memset(smsText, 0, strlen(smsText));
+				strcpy(smsText, (uint8_t*)"%D0%9E%D1%82%D0%BA%D1%80%D1%8B%D1%82%D1%8C");//Открыть
+			  }
+			  else if (needClose) {
+				  buttClose();
+				memset(smsText, 0, strlen(smsText));
+				strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BA%D1%80%D1%8B%D1%82%D1%8C");//Закрыть
+			  }
+			  step = 0;
+			  timeOfStart = 0;
+			  needStart = false; needOpen = false; needClose = false; delayAnsw = true;
 			  txATcommand();
 		  }
 		  else if (step!=12) timeRepeat = HAL_GetTick();
