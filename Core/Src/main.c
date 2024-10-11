@@ -399,6 +399,7 @@ void rxATcommand(uint8_t* text) {
 							memset(smsText, 0, strlen(smsText));
 							if (timeOfStart==0) {
 								buttStart();
+								answ = false;
 								strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA");
 							}
 							else {
@@ -406,12 +407,14 @@ void rxATcommand(uint8_t* text) {
 								needStart = true;
 								needOpen = false;
 								needClose = false;
+								answ = true;
 							}
 						}
 						else if (oldModem2[17]=='t') {
 							memset(smsText, 0, strlen(smsText));
 							if (timeOfStart==0) {
 								buttOpen();
+								answ = false;
 								strcpy(smsText, (uint8_t*)"%D0%9E%D1%82%D0%BA%D1%80%D1%8B%D1%82%D1%8C");
 							}
 							else {
@@ -419,12 +422,14 @@ void rxATcommand(uint8_t* text) {
 								needStart = false;
 								needOpen = true;
 								needClose = false;
+								answ = true;
 							}
 						}
 						else if (oldModem2[28]=='t') {
 							memset(smsText, 0, strlen(smsText));
 							if (timeOfStart==0) {
 								buttClose();
+								answ = false;
 								strcpy(smsText, (uint8_t*)"%D0%97%D0%B0%D0%BA%D1%80%D1%8B%D1%82%D1%8C");
 							}
 							else {
@@ -432,9 +437,9 @@ void rxATcommand(uint8_t* text) {
 								needStart = false;
 								needOpen = false;
 								needClose = true;
+								answ = true;
 							}
 						}
-						answ = true;
 					}
 					step=7;
 				}
